@@ -29,6 +29,7 @@ const VideoEditor = () => {
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Video configuration
   const fps = 30;
@@ -38,13 +39,25 @@ const VideoEditor = () => {
   const pixelsPerSecond = 100; // Width in pixels for one second in timeline
 
   const togglePlayPause = useCallback(() => {
-    setIsPlaying(!isPlaying);
-  }, [isPlaying]);
+    setIsPlaying(prev => {
+      const newIsPlaying = !prev;
+      if (videoRef.current) {
+        if (newIsPlaying) {
+          videoRef.current.play();
+        } else {
+          videoRef.current.pause();
+        }
+      }
+      return newIsPlaying;
+    });
+  }, []);
 
-  const handleTimeUpdate = useCallback((frame: number) => {
-    if (!isDraggingPlayhead) {
-      setCurrentFrame(frame);
-      setCurrentTime(frame / fps);
+  const handleTimeUpdate = useCallback(() => {
+    if (!isDraggingPlayhead && videoRef.current) {
+      const newTime = videoRef.current.currentTime;
+      const newFrame = Math.round(newTime * fps);
+      setCurrentTime(newTime);
+      setCurrentFrame(newFrame);
     }
   }, [isDraggingPlayhead, fps]);
 
@@ -65,6 +78,15 @@ const VideoEditor = () => {
     setTracks(prev => [...prev, newTrack]);
   };
 
+  const seekTo = (time: number) => {
+    const newTime = Math.max(0, Math.min(time, durationInFrames / fps));
+    setCurrentTime(newTime);
+    setCurrentFrame(Math.round(newTime * fps));
+    if (videoRef.current) {
+      videoRef.current.currentTime = newTime;
+    }
+  };
+
   const handleTimelineClick = (e: React.MouseEvent) => {
     if (!timelineRef.current) return;
     
@@ -72,18 +94,15 @@ const VideoEditor = () => {
     const scrollLeft = timelineRef.current.scrollLeft;
     const x = (e.clientX - rect.left + scrollLeft) / zoom;
     const newTime = x / pixelsPerSecond;
-    const newFrame = Math.round(newTime * fps);
-    
-    setCurrentTime(newTime);
-    setCurrentFrame(newFrame);
-    if (playerRef.current) {
-      playerRef.current.seekTo(newFrame);
-    }
+    seekTo(newTime);
   };
 
   const handlePlayheadDragStart = () => {
     setIsDraggingPlayhead(true);
     setIsPlaying(false);
+    if (videoRef.current) {
+      videoRef.current.pause();
+    }
   };
 
   const handlePlayheadDragEnd = () => {
@@ -96,13 +115,7 @@ const VideoEditor = () => {
       const scrollLeft = timelineRef.current.scrollLeft;
       const x = (e.clientX - rect.left + scrollLeft) / zoom;
       const newTime = x / pixelsPerSecond;
-      const newFrame = Math.round(newTime * fps);
-      
-      setCurrentTime(Math.max(0, Math.min(newTime, durationInFrames / fps)));
-      setCurrentFrame(Math.max(0, Math.min(newFrame, durationInFrames)));
-      if (playerRef.current) {
-        playerRef.current.seekTo(newFrame);
-      }
+      seekTo(newTime);
     }
   };
 
@@ -146,21 +159,6 @@ const VideoEditor = () => {
     }
   }, [currentTime, pixelsPerSecond, zoom, isDraggingPlayhead]);
 
-  const MyComposition = () => {
-    return (
-      <div className="w-full h-full bg-black relative">
-        {selectedVideo && (
-          <video
-            src={selectedVideo.url}
-            className="w-full h-full object-contain"
-            autoPlay={isPlaying}
-            loop
-          />
-        )}
-      </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-[1600px] mx-auto space-y-6">
@@ -168,17 +166,15 @@ const VideoEditor = () => {
           {/* Preview Window */}
           <Card className="col-span-2 p-4 bg-card">
             <div className="aspect-video bg-black rounded-lg overflow-hidden">
-              <Player
-                ref={playerRef}
-                component={MyComposition}
-                durationInFrames={durationInFrames}
-                fps={fps}
-                compositionWidth={compositionWidth}
-                compositionHeight={compositionHeight}
-                playing={isPlaying}
-                onFrame={handleTimeUpdate}
-                initialFrame={currentFrame}
-              />
+              {selectedVideo && (
+                <video
+                  ref={videoRef}
+                  src={selectedVideo.url}
+                  className="w-full h-full object-contain"
+                  onTimeUpdate={handleTimeUpdate}
+                  onEnded={() => setIsPlaying(false)}
+                />
+              )}
             </div>
           </Card>
 
@@ -194,13 +190,7 @@ const VideoEditor = () => {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => {
-                setCurrentTime(0);
-                setCurrentFrame(0);
-                if (playerRef.current) {
-                  playerRef.current.seekTo(0);
-                }
-              }}
+              onClick={() => seekTo(0)}
             >
               <SkipBack className="h-4 w-4" />
             </Button>
@@ -220,14 +210,7 @@ const VideoEditor = () => {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => {
-                const endFrame = durationInFrames;
-                setCurrentTime(endFrame / fps);
-                setCurrentFrame(endFrame);
-                if (playerRef.current) {
-                  playerRef.current.seekTo(endFrame);
-                }
-              }}
+              onClick={() => seekTo(durationInFrames / fps)}
             >
               <SkipForward className="h-4 w-4" />
             </Button>
