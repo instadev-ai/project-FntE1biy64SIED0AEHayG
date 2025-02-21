@@ -22,11 +22,13 @@ interface Track {
 const VideoEditor = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [currentFrame, setCurrentFrame] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<MediaAsset | null>(null);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
+  const playerRef = useRef<any>(null);
 
   // Video configuration
   const fps = 30;
@@ -41,9 +43,10 @@ const VideoEditor = () => {
 
   const handleTimeUpdate = useCallback((frame: number) => {
     if (!isDraggingPlayhead) {
+      setCurrentFrame(frame);
       setCurrentTime(frame / fps);
     }
-  }, [isDraggingPlayhead]);
+  }, [isDraggingPlayhead, fps]);
 
   const handleZoom = (direction: "in" | "out") => {
     setZoom(prev => {
@@ -69,7 +72,13 @@ const VideoEditor = () => {
     const scrollLeft = timelineRef.current.scrollLeft;
     const x = (e.clientX - rect.left + scrollLeft) / zoom;
     const newTime = x / pixelsPerSecond;
-    setCurrentTime(Math.max(0, Math.min(newTime, durationInFrames / fps)));
+    const newFrame = Math.round(newTime * fps);
+    
+    setCurrentTime(newTime);
+    setCurrentFrame(newFrame);
+    if (playerRef.current) {
+      playerRef.current.seekTo(newFrame);
+    }
   };
 
   const handlePlayheadDragStart = () => {
@@ -87,7 +96,13 @@ const VideoEditor = () => {
       const scrollLeft = timelineRef.current.scrollLeft;
       const x = (e.clientX - rect.left + scrollLeft) / zoom;
       const newTime = x / pixelsPerSecond;
+      const newFrame = Math.round(newTime * fps);
+      
       setCurrentTime(Math.max(0, Math.min(newTime, durationInFrames / fps)));
+      setCurrentFrame(Math.max(0, Math.min(newFrame, durationInFrames)));
+      if (playerRef.current) {
+        playerRef.current.seekTo(newFrame);
+      }
     }
   };
 
@@ -113,6 +128,24 @@ const VideoEditor = () => {
     };
   }, [isDraggingPlayhead]);
 
+  // Auto-scroll timeline to keep playhead visible
+  useEffect(() => {
+    if (!timelineRef.current || isDraggingPlayhead) return;
+
+    const timelineEl = timelineRef.current;
+    const playheadPosition = currentTime * pixelsPerSecond * zoom;
+    const timelineRect = timelineEl.getBoundingClientRect();
+    const scrollLeft = timelineEl.scrollLeft;
+    const viewportWidth = timelineRect.width;
+    const buffer = viewportWidth * 0.2; // 20% buffer zone
+
+    if (playheadPosition < scrollLeft + buffer) {
+      timelineEl.scrollLeft = Math.max(0, playheadPosition - buffer);
+    } else if (playheadPosition > scrollLeft + viewportWidth - buffer) {
+      timelineEl.scrollLeft = playheadPosition - viewportWidth + buffer;
+    }
+  }, [currentTime, pixelsPerSecond, zoom, isDraggingPlayhead]);
+
   const MyComposition = () => {
     return (
       <div className="w-full h-full bg-black relative">
@@ -136,6 +169,7 @@ const VideoEditor = () => {
           <Card className="col-span-2 p-4 bg-card">
             <div className="aspect-video bg-black rounded-lg overflow-hidden">
               <Player
+                ref={playerRef}
                 component={MyComposition}
                 durationInFrames={durationInFrames}
                 fps={fps}
@@ -143,6 +177,7 @@ const VideoEditor = () => {
                 compositionHeight={compositionHeight}
                 playing={isPlaying}
                 onFrame={handleTimeUpdate}
+                initialFrame={currentFrame}
               />
             </div>
           </Card>
@@ -159,7 +194,13 @@ const VideoEditor = () => {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => setCurrentTime(0)}
+              onClick={() => {
+                setCurrentTime(0);
+                setCurrentFrame(0);
+                if (playerRef.current) {
+                  playerRef.current.seekTo(0);
+                }
+              }}
             >
               <SkipBack className="h-4 w-4" />
             </Button>
@@ -179,7 +220,14 @@ const VideoEditor = () => {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => setCurrentTime(durationInFrames / fps)}
+              onClick={() => {
+                const endFrame = durationInFrames;
+                setCurrentTime(endFrame / fps);
+                setCurrentFrame(endFrame);
+                if (playerRef.current) {
+                  playerRef.current.seekTo(endFrame);
+                }
+              }}
             >
               <SkipForward className="h-4 w-4" />
             </Button>
