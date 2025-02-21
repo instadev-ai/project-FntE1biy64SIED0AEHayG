@@ -9,17 +9,27 @@ import {
   SkipBack, 
   SkipForward,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  Plus
 } from "lucide-react";
+import MediaLibrary, { type MediaAsset } from "./MediaLibrary";
+
+interface Track {
+  id: string;
+  mediaAsset: MediaAsset;
+  startTime: number;
+}
 
 const VideoEditor = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [zoom, setZoom] = useState(1);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<MediaAsset | null>(null);
 
   // Video configuration
   const fps = 30;
-  const durationInFrames = 30 * 10; // 10 seconds
+  const durationInFrames = 30 * 30; // 30 seconds timeline
   const compositionWidth = 1920;
   const compositionHeight = 1080;
 
@@ -34,27 +44,59 @@ const VideoEditor = () => {
   const handleZoom = (direction: "in" | "out") => {
     setZoom(prev => {
       const newZoom = direction === "in" ? prev * 1.2 : prev / 1.2;
-      return Math.min(Math.max(newZoom, 0.5), 3); // Limit zoom between 0.5x and 3x
+      return Math.min(Math.max(newZoom, 0.5), 3);
     });
+  };
+
+  const handleMediaSelect = (asset: MediaAsset) => {
+    setSelectedVideo(asset);
+    const newTrack: Track = {
+      id: Date.now().toString(),
+      mediaAsset: asset,
+      startTime: currentTime
+    };
+    setTracks(prev => [...prev, newTrack]);
+  };
+
+  const MyComposition = () => {
+    return (
+      <div className="w-full h-full bg-black relative">
+        {selectedVideo && (
+          <video
+            src={selectedVideo.url}
+            className="w-full h-full object-contain"
+            autoPlay={isPlaying}
+            loop
+          />
+        )}
+      </div>
+    );
   };
 
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-[1600px] mx-auto space-y-6">
-        {/* Preview Window */}
-        <Card className="p-4 bg-card">
-          <div className="aspect-video bg-black rounded-lg overflow-hidden">
-            <Player
-              component={() => <div className="w-full h-full bg-black" />}
-              durationInFrames={durationInFrames}
-              fps={fps}
-              compositionWidth={compositionWidth}
-              compositionHeight={compositionHeight}
-              playing={isPlaying}
-              onFrame={handleTimeUpdate}
-            />
+        <div className="grid grid-cols-3 gap-6">
+          {/* Preview Window */}
+          <Card className="col-span-2 p-4 bg-card">
+            <div className="aspect-video bg-black rounded-lg overflow-hidden">
+              <Player
+                component={MyComposition}
+                durationInFrames={durationInFrames}
+                fps={fps}
+                compositionWidth={compositionWidth}
+                compositionHeight={compositionHeight}
+                playing={isPlaying}
+                onFrame={handleTimeUpdate}
+              />
+            </div>
+          </Card>
+
+          {/* Media Library */}
+          <div className="col-span-1">
+            <MediaLibrary onSelectMedia={handleMediaSelect} />
           </div>
-        </Card>
+        </div>
 
         {/* Controls */}
         <Card className="p-4">
@@ -124,7 +166,6 @@ const VideoEditor = () => {
               transformOrigin: "left top"
             }}
           >
-            {/* Timeline tracks will be added here */}
             <div className="min-w-[2000px] h-full bg-muted/20 rounded-lg">
               {/* Time markers */}
               <div className="h-8 border-b flex">
@@ -138,15 +179,37 @@ const VideoEditor = () => {
                 ))}
               </div>
 
-              {/* Example tracks */}
-              {Array.from({ length: 3 }).map((_, i) => (
+              {/* Video Tracks */}
+              {tracks.map((track) => (
                 <div 
-                  key={i}
+                  key={track.id}
                   className="h-20 border-b border-muted-foreground/20 flex items-center p-2"
+                  style={{
+                    paddingLeft: `${track.startTime * 100}px`
+                  }}
                 >
-                  <div className="w-full h-16 rounded bg-muted/20" />
+                  <div 
+                    className="h-16 rounded bg-primary/20 flex items-center px-2"
+                    style={{
+                      width: `${parseFloat(track.mediaAsset.duration) * 100}px`
+                    }}
+                  >
+                    <span className="text-xs truncate">
+                      {track.mediaAsset.name}
+                    </span>
+                  </div>
                 </div>
               ))}
+
+              {/* Empty track */}
+              <div className="h-20 border-b border-muted-foreground/20 flex items-center p-2">
+                <div className="w-full h-16 rounded bg-muted/20 flex items-center justify-center">
+                  <Button variant="ghost" size="sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Track
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </Card>
